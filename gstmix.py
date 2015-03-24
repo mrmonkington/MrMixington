@@ -63,7 +63,7 @@ class Webcam:
         self.queues = {}
         scaler_caps = Gst.caps_from_string('video/x-raw, width=320, height=180');
 
-        for it in range(1, 2+1):
+        for it in range(1, 3+1):
             self.tees['tee%i' % it] = Gst.ElementFactory.make('tee', 'tee%i' % it)
             self.videoscales['videoscale%i' % it] = Gst.ElementFactory.make('videoconvert', 'videoscale%i' % it)
             self.vicons["vicon%i" % it] = Gst.ElementFactory.make('xvimagesink', "vicon%i" % it)
@@ -82,24 +82,37 @@ class Webcam:
 
         pad1 = self.tees["tee1"].get_request_pad('src_1')
         pad2 = self.tees["tee2"].get_request_pad('src_1')
+        pad3 = self.tees["tee2"].get_request_pad('src_2')
 
-        #self.live_mixer = Gst.ElementFactory.make('glcolorscale', None)
-        #self.pipeline.add(self.live_mixer)
+        self.live_queue = Gst.ElementFactory.make('queue', None)
+        self.live_queue_2 = Gst.ElementFactory.make('queue', None)
+        self.preview_queue = Gst.ElementFactory.make('queue', None)
+
+        self.live_mixer = Gst.ElementFactory.make('videomixer', None)
+        self.pipeline.add(self.live_mixer)
 
         self.live_sink = Gst.ElementFactory.make('xvimagesink', "live_sink")
         self.preview_sink = Gst.ElementFactory.make('xvimagesink', "preview_sink")
-        self.live_queue = Gst.ElementFactory.make('queue', None)
-        self.preview_queue = Gst.ElementFactory.make('queue', None)
 
         # Add elements to the pipeline
-        self.pipeline.add(self.live_queue, self.preview_queue)
+        self.pipeline.add(self.live_queue, self.live_queue_2, self.preview_queue)
         self.pipeline.add(self.live_sink, self.preview_sink)
 
-        pad1.link(self.preview_queue.get_static_pad("sink"))
-        pad2.link(self.live_queue.get_static_pad("sink"))
+        pad3.link(self.preview_queue.get_static_pad("sink"))
+
+        pad1.link(self.live_queue.get_static_pad("sink"))
+        pad2.link(self.live_queue_2.get_static_pad("sink"))
+
+        self.live_queue.link(self.live_mixer)
+        self.live_queue_2.link(self.live_mixer)
+
+        mix_pad_1 = self.live_mixer.sinkpads[0]
+        mix_pad_2 = self.live_mixer.sinkpads[1]
+        mix_pad_1.set_property( "alpha", 0.5 )
+        mix_pad_2.set_property( "alpha", 0.5 )
 
         self.preview_queue.link(self.preview_sink)
-        self.live_queue.link(self.live_sink)
+        self.live_mixer.link(self.live_sink)
 
         #gstreamer_link_many(self.src, self.videoscale, self.sink)
 
