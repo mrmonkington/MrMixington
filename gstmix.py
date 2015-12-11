@@ -8,6 +8,10 @@ from gi.repository import GObject, Gst, Gtk
 from gi.repository import GdkX11, GstVideo
 
 #import ctypes
+#x11 = ctypes.cdll.LoadLibrary('libX11.so')
+#x11.XInitThreads()
+
+#import ctypes
 #import sys
 #if sys.platform.startswith('linux'):
 #    x11 = ctypes.cdll.LoadLibrary('libX11.so')
@@ -63,7 +67,6 @@ class Webcam:
         for it in range(1, 4+1):
             self.inputs["input%i" % it] = Gst.ElementFactory.make('videotestsrc', "input%i" % it);
             self.inputs["input%i" % it].set_property("is-live", "true")
-            #self.inputs["input%i" % it].set_property("pattern", "checkers-8")
             #self.inputs["input%i" % it].set_property("pattern", "circular")
             self.tees['tee%i' % it] = Gst.ElementFactory.make('tee', 'tee%i' % it)
             self.videoscales['videoscale%i' % it] = Gst.ElementFactory.make('videoconvert', 'videoscale%i' % it)
@@ -88,6 +91,9 @@ class Webcam:
             self.queues['queue%i' % it].link(self.videoscales_vicon['videoscale%i' % it])
             self.videoscales_vicon['videoscale%i' % it].link_filtered( self.vicons['vicon%i' % it], scaler_caps )
             #self.queues['queue%i' % it].link( self.vicons['vicon%i' % it] )
+
+        self.inputs["input1"].set_property("pattern", "checkers-8")
+        self.inputs["input3"].set_property("pattern", "checkers-8")
 
         #pad1 = self.tees["tee1"].get_request_pad('src_1')
         #pad2 = self.tees["tee2"].get_request_pad('src_1')
@@ -139,7 +145,7 @@ class Webcam:
 
     def run(self):
         self.pipeline.set_state(Gst.State.PLAYING)
-        print "run"
+        print( "run" )
         Gtk.main()
 
     def quit(self, window):
