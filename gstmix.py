@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 
 import gi
+gi.require_version('Gtk', '3.0')
 gi.require_version('Gst', '1.0')
+gi.require_version('GstVideo', '1.0')
 from gi.repository import GObject, Gst, Gtk
 
 # Needed for window.get_xid(), xvimagesink.set_window_handle(), respectively:
@@ -110,8 +112,11 @@ class Webcam:
         self.preview_sink = Gst.ElementFactory.make('xvimagesink', "preview_sink")
 
         # Add elements to the pipeline
-        self.pipeline.add(self.live_queue, self.live_queue_2, self.preview_queue)
-        self.pipeline.add(self.live_sink, self.preview_sink)
+        self.pipeline.add(self.live_queue)
+	self.pipeline.add(self.live_queue_2)
+	self.pipeline.add(self.preview_queue)
+        self.pipeline.add(self.live_sink)
+	self.pipeline.add(self.preview_sink)
 
         self.tees["tee2"].link_pads('src_2', self.preview_queue, "sink")
 
