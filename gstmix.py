@@ -26,7 +26,7 @@ def gstreamer_link_many(*args):
     for i in range(0, len(args)-1):
         args[i].link(args[i+1])
 
-class Webcam:
+class Mixington:
     def __init__(self):
         self.builder = Gtk.Builder()
         self.builder.add_from_file("main.ui")
@@ -113,10 +113,10 @@ class Webcam:
 
         # Add elements to the pipeline
         self.pipeline.add(self.live_queue)
-	self.pipeline.add(self.live_queue_2)
-	self.pipeline.add(self.preview_queue)
+        self.pipeline.add(self.live_queue_2)
+        self.pipeline.add(self.preview_queue)
         self.pipeline.add(self.live_sink)
-	self.pipeline.add(self.preview_sink)
+        self.pipeline.add(self.preview_sink)
 
         self.tees["tee2"].link_pads('src_2', self.preview_queue, "sink")
 
@@ -178,7 +178,7 @@ class Webcam:
         print('on_error():', msg.parse_error())
 
 
-webcam = Webcam()
-webcam.init()
-webcam.init_pipeline()
-webcam.run()
+mixer = Mixington()
+mixer.init()
+mixer.init_pipeline()
+mixer.run()
