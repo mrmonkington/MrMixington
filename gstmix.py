@@ -19,6 +19,9 @@ from gi.repository import GdkX11, GstVideo
 #    x11 = ctypes.cdll.LoadLibrary('libX11.so')
 #    x11.XInitThreads()
 
+MASTER_WIDTH=1920
+MASTER_HEIGHT=1080
+
 GObject.threads_init()
 Gst.init(None)
 
@@ -32,7 +35,7 @@ class Mixington:
         self.builder.add_from_file("main.ui")
         self.window = self.builder.get_object("window1")
         self.window.connect('destroy', self.quit)
-        self.window.set_default_size(960, 540)
+        self.window.set_default_size(MASTER_WIDTH, MASTER_HEIGHT)
 
         self.live_screen = self.builder.get_object("live_screen")
         self.preview_screen = self.builder.get_object("preview_screen")
@@ -40,6 +43,11 @@ class Mixington:
         for it in range(1, 4+1):
             self.vicon_screen[it] = self.builder.get_object("vicon%i" % it)
         self.xids = {}
+
+        self.builder.get_object("switch1").connect("clicked", self.clicked, 0)
+        self.builder.get_object("switch2").connect("clicked", self.clicked, 1)
+        self.builder.get_object("switch3").connect("clicked", self.clicked, 2)
+        self.builder.get_object("switch4").connect("clicked", self.clicked, 3)
 
 
     def init_pipeline(self):
@@ -63,7 +71,7 @@ class Mixington:
         self.tees = {}
         self.vicons = {}
         self.queues = {}
-        scaler_caps = Gst.caps_from_string('video/x-raw, width=960, height=540');
+        scaler_caps = Gst.caps_from_string('video/x-raw, width=%i, height=%i' % (MASTER_WIDTH, MASTER_HEIGHT));
         preview_caps = Gst.caps_from_string('video/x-raw, width=160, height=90');
 
         for it in range(1, 4+1):
@@ -102,34 +110,49 @@ class Mixington:
         #pad3 = self.tees["tee2"].get_request_pad('src_2')
 
         self.live_queue = Gst.ElementFactory.make('queue', None)
+        self.pipeline.add(self.live_queue)
         self.live_queue_2 = Gst.ElementFactory.make('queue', None)
-        self.preview_queue = Gst.ElementFactory.make('queue', None)
+        self.pipeline.add(self.live_queue_2)
+        self.live_queue_3 = Gst.ElementFactory.make('queue', None)
+        self.pipeline.add(self.live_queue_3)
+        self.live_queue_4 = Gst.ElementFactory.make('queue', None)
+        self.pipeline.add(self.live_queue_4)
 
-        self.live_mixer = Gst.ElementFactory.make('videomixer', None)
+        self.preview_queue = Gst.ElementFactory.make('queue', None)
+        self.pipeline.add(self.preview_queue)
+
+        self.live_mixer = Gst.ElementFactory.make('compositor', None)
         self.pipeline.add(self.live_mixer)
 
         self.live_sink = Gst.ElementFactory.make('xvimagesink', "live_sink")
+        self.pipeline.add(self.live_sink)
+
         self.preview_sink = Gst.ElementFactory.make('xvimagesink', "preview_sink")
+        self.pipeline.add(self.preview_sink)
 
         # Add elements to the pipeline
-        self.pipeline.add(self.live_queue)
-        self.pipeline.add(self.live_queue_2)
-        self.pipeline.add(self.preview_queue)
-        self.pipeline.add(self.live_sink)
-        self.pipeline.add(self.preview_sink)
 
         self.tees["tee2"].link_pads('src_2', self.preview_queue, "sink")
 
         self.tees["tee1"].link_pads('src_1', self.live_queue, "sink")
         self.tees["tee2"].link_pads('src_1', self.live_queue_2, "sink")
+        self.tees["tee3"].link_pads('src_1', self.live_queue_3, "sink")
+        self.tees["tee4"].link_pads('src_1', self.live_queue_4, "sink")
 
         self.live_queue.link(self.live_mixer)
         self.live_queue_2.link(self.live_mixer)
+        self.live_queue_3.link(self.live_mixer)
+        self.live_queue_4.link(self.live_mixer)
 
         mix_pad_1 = self.live_mixer.sinkpads[0]
         mix_pad_2 = self.live_mixer.sinkpads[1]
-        mix_pad_1.set_property( "alpha", 0.5 )
-        mix_pad_2.set_property( "alpha", 0.5 )
+        mix_pad_3 = self.live_mixer.sinkpads[2]
+        mix_pad_4 = self.live_mixer.sinkpads[3]
+
+        mix_pad_1.set_property( "alpha", 1.0 )
+        mix_pad_2.set_property( "alpha", 0.0 )
+        mix_pad_3.set_property( "alpha", 0.0 )
+        mix_pad_4.set_property( "alpha", 0.0 )
 
         self.preview_queue.link(self.preview_sink)
         self.live_mixer.link(self.live_sink)
@@ -137,6 +160,15 @@ class Mixington:
         #gstreamer_link_many(self.src, self.videoscale, self.sink)
 
         #self.inputs["input2"].link(self.preview_sink)
+
+    def clicked(self, widget, *data):
+        [num,] = data
+        print num
+        for a in range(0,4):
+            if a == num:
+                self.live_mixer.sinkpads[a].set_property('alpha', 1.0)
+            else:
+                self.live_mixer.sinkpads[a].set_property('alpha', 0.0)
 
     def init(self):
         self.window.show_all()
