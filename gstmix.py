@@ -19,11 +19,14 @@ from gi.repository import GdkX11, GstVideo
 #    x11 = ctypes.cdll.LoadLibrary('libX11.so')
 #    x11.XInitThreads()
 
-MASTER_WIDTH=1920
-MASTER_HEIGHT=1080
+#MASTER_WIDTH=1920
+#MASTER_HEIGHT=1080
+MASTER_WIDTH=960
+MASTER_HEIGHT=540
 
 GObject.threads_init()
 Gst.init(None)
+Gtk.init(None)
 
 def gstreamer_link_many(*args):
     for i in range(0, len(args)-1):
@@ -42,13 +45,8 @@ class Mixington:
         self.vicon_screen = {}
         for it in range(1, 4+1):
             self.vicon_screen[it] = self.builder.get_object("vicon%i" % it)
+            self.builder.get_object("switch%i" % it).connect("clicked", self.clicked, it-1)
         self.xids = {}
-
-        self.builder.get_object("switch1").connect("clicked", self.clicked, 0)
-        self.builder.get_object("switch2").connect("clicked", self.clicked, 1)
-        self.builder.get_object("switch3").connect("clicked", self.clicked, 2)
-        self.builder.get_object("switch4").connect("clicked", self.clicked, 3)
-
 
     def init_pipeline(self):
         # Create GStreamer pipeline
@@ -71,21 +69,28 @@ class Mixington:
         self.tees = {}
         self.vicons = {}
         self.queues = {}
-        scaler_caps = Gst.caps_from_string('video/x-raw, width=%i, height=%i' % (MASTER_WIDTH, MASTER_HEIGHT));
-        preview_caps = Gst.caps_from_string('video/x-raw, width=160, height=90');
+        self.sinks = {}
+        scaler_caps = Gst.caps_from_string('video/x-raw(memory:GLMemory), width=%i, height=%i' % (MASTER_WIDTH, MASTER_HEIGHT));
+        preview_caps = Gst.caps_from_string('video/x-raw(memory:GLMemory), width=160, height=90');
 
         for it in range(1, 4+1):
-            self.inputs["input%i" % it] = Gst.ElementFactory.make('videotestsrc', "input%i" % it);
+            self.inputs["input%i" % it] = Gst.ElementFactory.make('gltestsrc', "input%i" % it);
             self.inputs["input%i" % it].set_property("is-live", "true")
             #self.inputs["input%i" % it].set_property("pattern", "circular")
             self.tees['tee%i' % it] = Gst.ElementFactory.make('tee', 'tee%i' % it)
-            self.videoscales['videoscale%i' % it] = Gst.ElementFactory.make('videoconvert', 'videoscale%i' % it)
-            self.videoscales_vicon['videoscale%i' % it] = Gst.ElementFactory.make('videoconvert', 'videoscalevicon%i' % it)
+            #self.videoscales['videoscale%i' % it] = Gst.ElementFactory.make('videoconvert', 'videoscale%i' % it)
+            self.videoscales_vicon['videoscale%i' % it] = Gst.ElementFactory.make('glcolorscale', 'videoscalevicon%i' % it)
             self.queues["queue%i" % it] = Gst.ElementFactory.make('queue')
-            self.vicons["vicon%i" % it] = Gst.ElementFactory.make('xvimagesink', "vicon%i" % it)
+
+            self.vicons["vicon%i" % it] = Gst.ElementFactory.make('glsinkbin', "vicon%i" % it)
+            self.sinks[it] = Gst.ElementFactory.make('gtkglsink')
+            self.vicons["vicon%i" % it].set_property('sink', self.sinks[it])
+            self.builder.get_object('vicon%i' % it).add_overlay(
+                self.sinks[it].get_property('widget'))
+            #self.window.add(self.sinks[it].get_property('widget'))
 
             self.pipeline.add(self.inputs['input%i' % it])
-            self.pipeline.add(self.videoscales['videoscale%i' % it])
+            #self.pipeline.add(self.videoscales['videoscale%i' % it])
             self.pipeline.add(self.videoscales_vicon['videoscale%i' % it])
             self.pipeline.add(self.tees['tee%i' % it])
             self.pipeline.add(self.vicons['vicon%i' % it])
@@ -121,14 +126,27 @@ class Mixington:
         self.preview_queue = Gst.ElementFactory.make('queue', None)
         self.pipeline.add(self.preview_queue)
 
-        self.live_mixer = Gst.ElementFactory.make('compositor', None)
+        self.preview_mixer = Gst.ElementFactory.make('glvideomixer', None)
+        self.pipeline.add(self.preview_mixer)
+
+        self.live_mixer = Gst.ElementFactory.make('glvideomixer', None)
         self.pipeline.add(self.live_mixer)
 
-        self.live_sink = Gst.ElementFactory.make('xvimagesink', "live_sink")
+        self.live_sink = Gst.ElementFactory.make('glsinkbin', "live_sink")
+        self.live_gtk_sink = Gst.ElementFactory.make('gtkglsink')
+        self.live_sink.set_property('sink', self.live_gtk_sink)
         self.pipeline.add(self.live_sink)
+        #self.window.add(self.live_gtk_sink.get_property('widget'))
+        self.builder.get_object('live_screen').add_overlay(
+            self.live_gtk_sink.get_property('widget'))
 
-        self.preview_sink = Gst.ElementFactory.make('xvimagesink', "preview_sink")
+        self.preview_sink = Gst.ElementFactory.make('glsinkbin', "preview_sink")
+        self.preview_gtk_sink = Gst.ElementFactory.make('gtkglsink')
+        self.preview_sink.set_property('sink', self.preview_gtk_sink)
         self.pipeline.add(self.preview_sink)
+        #self.window.add(self.preview_gtk_sink.get_property('widget'))
+        self.builder.get_object('preview_screen').add_overlay(
+            self.preview_gtk_sink.get_property('widget'))
 
         # Add elements to the pipeline
 
@@ -154,7 +172,8 @@ class Mixington:
         mix_pad_3.set_property( "alpha", 0.0 )
         mix_pad_4.set_property( "alpha", 0.0 )
 
-        self.preview_queue.link(self.preview_sink)
+        self.preview_queue.link(self.preview_mixer)
+        self.preview_mixer.link(self.preview_sink)
         self.live_mixer.link(self.live_sink)
 
         #gstreamer_link_many(self.src, self.videoscale, self.sink)
@@ -175,10 +194,11 @@ class Mixington:
         # You need to get the XID after window.show_all().  You shouldn't get it
         # in the on_sync_message() handler because threading issues will cause
         # segfaults there.
-        self.live_xid = self.live_screen.get_property('window').get_xid()
-        self.preview_xid = self.preview_screen.get_property('window').get_xid()
-        for it in range(1, 4+1):
-            self.xids["vicon%i" % it] = self.vicon_screen[it].get_property('window').get_xid()
+
+        #self.live_xid = self.live_screen.get_property('window').get_xid()
+        #self.preview_xid = self.preview_screen.get_property('window').get_xid()
+        #for it in range(1, 4+1):
+        #    self.xids["vicon%i" % it] = self.vicon_screen[it].get_property('window').get_xid()
 
     def run(self):
         self.pipeline.set_state(Gst.State.PLAYING)
@@ -190,20 +210,21 @@ class Mixington:
         Gtk.main_quit()
 
     def on_sync_message(self, bus, msg):
-        if msg.get_structure().get_name() == 'prepare-window-handle':
-            print(msg.src.name);
-            if msg.src.name == "live_sink":
-                print('live prepare-window-handle')
-                msg.src.set_property('force-aspect-ratio', True)
-                msg.src.set_window_handle(self.live_xid)
-            if msg.src.name == "preview_sink":
-                print('preview prepare-window-handle')
-                msg.src.set_property('force-aspect-ratio', True)
-                msg.src.set_window_handle(self.preview_xid)
-            if msg.src.name.startswith("vicon"):
-                print('"%s" prepare-window-handle' % msg.src.name)
-                msg.src.set_property('force-aspect-ratio', True)
-                msg.src.set_window_handle(self.xids[msg.src.name])
+        #if msg.get_structure().get_name() == 'prepare-window-handle':
+        #    print(msg.src.name);
+        #    if msg.src.name == "live_sink":
+        #        print('live prepare-window-handle')
+        #        msg.src.set_property('force-aspect-ratio', True)
+        #        msg.src.set_window_handle(self.live_xid)
+        #    if msg.src.name == "preview_sink":
+        #        print('preview prepare-window-handle')
+        #        msg.src.set_property('force-aspect-ratio', True)
+        #        msg.src.set_window_handle(self.preview_xid)
+        #    if msg.src.name.startswith("vicon"):
+        #        print('"%s" prepare-window-handle' % msg.src.name)
+        #        msg.src.set_property('force-aspect-ratio', True)
+        #        msg.src.set_window_handle(self.xids[msg.src.name])
+        pass
                 
 
     def on_error(self, bus, msg):
@@ -211,6 +232,6 @@ class Mixington:
 
 
 mixer = Mixington()
-mixer.init()
 mixer.init_pipeline()
+mixer.init()
 mixer.run()
