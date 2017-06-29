@@ -2,9 +2,10 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
 gi.require_version('Gst', '1.0')
 gi.require_version('GstVideo', '1.0')
-from gi.repository import GObject, Gst, Gtk
+from gi.repository import GObject, Gst, Gtk, Gdk
 
 # Needed for window.get_xid(), xvimagesink.set_window_handle(), respectively:
 from gi.repository import GdkX11, GstVideo
@@ -19,10 +20,11 @@ from gi.repository import GdkX11, GstVideo
 #    x11 = ctypes.cdll.LoadLibrary('libX11.so')
 #    x11.XInitThreads()
 
-#MASTER_WIDTH=1920
-#MASTER_HEIGHT=1080
-MASTER_WIDTH=960
-MASTER_HEIGHT=540
+MASTER_WIDTH=1920
+MASTER_HEIGHT=1080
+FPS=60
+#MASTER_WIDTH=960
+#MASTER_HEIGHT=540
 
 GObject.threads_init()
 Gst.init(None)
@@ -38,6 +40,7 @@ class Mixington:
         self.builder.add_from_file("main.ui")
         self.window = self.builder.get_object("window1")
         self.window.connect('destroy', self.quit)
+        self.window.connect('key-press-event', self.keypress)
         self.window.set_default_size(MASTER_WIDTH, MASTER_HEIGHT)
 
         self.live_screen = self.builder.get_object("live_screen")
@@ -70,6 +73,7 @@ class Mixington:
         self.vicons = {}
         self.queues = {}
         self.sinks = {}
+        src_caps = Gst.caps_from_string('video/x-raw(memory:GLMemory), width=%i, height=%i, framerate=%i/1' % (MASTER_WIDTH, MASTER_HEIGHT, FPS));
         scaler_caps = Gst.caps_from_string('video/x-raw(memory:GLMemory), width=%i, height=%i' % (MASTER_WIDTH, MASTER_HEIGHT));
         preview_caps = Gst.caps_from_string('video/x-raw(memory:GLMemory), width=160, height=90');
 
@@ -96,7 +100,7 @@ class Mixington:
             self.pipeline.add(self.vicons['vicon%i' % it])
             self.pipeline.add(self.queues['queue%i' % it])
 
-            self.inputs['input%i' % it].link( self.tees['tee%i' % it] )
+            self.inputs['input%i' % it].link_filtered( self.tees['tee%i' % it], src_caps )
             #self.inputs['input%i' % it].link_filtered( self.tees['tee%i' % it], scaler_caps )
 
             #self.inputs['input%i' % it].link( self.videoscales['videoscale%i' % it] )
@@ -188,6 +192,13 @@ class Mixington:
                 self.live_mixer.sinkpads[a].set_property('alpha', 1.0)
             else:
                 self.live_mixer.sinkpads[a].set_property('alpha', 0.0)
+
+    def keypress(self, win, event):
+        if event.keyval == Gdk.KEY_F11:
+            win.is_fullscreen = not getattr(win, 'is_fullscreen', False)
+            action = win.fullscreen if win.is_fullscreen else win.unfullscreen
+            action()
+            self.builder.get_object('statusbar1').set_visible(not win.is_fullscreen)
 
     def init(self):
         self.window.show_all()
